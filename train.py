@@ -8,21 +8,21 @@ import os
 os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
-import gc
-import time
-from dataclasses import dataclass, asdict
+import gc  # noqa: E402
+import time  # noqa: E402
+from dataclasses import dataclass, asdict  # noqa: E402
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import torch  # noqa: E402
+import torch.nn as nn  # noqa: E402
+import torch.nn.functional as F  # noqa: E402
 
-from kernels import get_kernel
+from kernels import get_kernel  # noqa: E402
 cap = torch.cuda.get_device_capability()
 # varunneal's FA3 is Hopper only, use kernels-community on non-Hopper GPUs
 repo = "varunneal/flash-attention-3" if cap == (9, 0) else "kernels-community/flash-attn3"
 fa3 = get_kernel(repo).flash_attn_interface
 
-from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
+from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # GPT Model
