@@ -5,6 +5,10 @@ description = "Autonomous pretraining research swarm"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "ipykernel>=7.3.0",
+    "jupyter>=1.1.1",
+    "jupyter-client>=8.9.1",
+    "jupyter-core>=5.9.1",
     "kernels>=0.11.7",
     "matplotlib>=3.10.8",
     "numpy>=2.2.6",
