@@ -9,16 +9,16 @@ Usage:
 Data and tokenizer are stored in ~/.cache/autoresearch/.
 """
 
+import argparse
+import math
 import os
+import pickle
 import sys
 import time
-import math
-import argparse
-import pickle
 from multiprocessing import Pool
 
-import requests
 import pyarrow.parquet as pq
+import requests
 import rustbpe
 import tiktoken
 import torch
@@ -75,7 +75,7 @@ def download_single_shard(index):
             os.rename(temp_path, filepath)
             print(f"  Downloaded {filename}")
             return True
-        except (requests.RequestException, IOError) as e:
+        except (OSError, requests.RequestException) as e:
             print(f"  Attempt {attempt}/{max_attempts} failed for {filename}: {e}")
             for path in [filepath + ".tmp", filepath]:
                 if os.path.exists(path):
@@ -238,7 +238,7 @@ class Tokenizer:
                 for row in ids:
                     row.insert(0, prepend_id)
         else:
-            raise ValueError(f"Invalid input type: {type(text)}")
+            raise TypeError(f"Invalid input type: {type(text)}")
         return ids
 
     def decode(self, ids):

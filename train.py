@@ -5,24 +5,26 @@ Usage: uv run train.py
 """
 
 import os
+
 os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
 import gc
+import sys
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-
 from kernels import get_kernel
+from torch import nn
+
 cap = torch.cuda.get_device_capability()
 # varunneal's FA3 is Hopper only, use kernels-community on non-Hopper GPUs
 repo = "varunneal/flash-attention-3" if cap == (9, 0) else "kernels-community/flash-attn3"
 fa3 = get_kernel(repo).flash_attn_interface
 
-from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
+from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, evaluate_bpb, make_dataloader
 
 # ---------------------------------------------------------------------------
 # GPT Model
@@ -74,7 +76,7 @@ class CausalSelfAttention(nn.Module):
         self.ve_gate = nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
 
     def forward(self, x, ve, cos_sin, window_size):
-        B, T, C = x.size()
+        B, T, _C = x.size()
         q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
         k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
         v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
@@ -247,25 +249,22 @@ class GPT(nn.Module):
         dmodel_lr_scale = (model_dim / 768) ** -0.5
         print(f"Scaling AdamW LRs by 1/sqrt({model_dim}/768) = {dmodel_lr_scale:.6f}")
         param_groups = [
-            dict(kind='adamw', params=lm_head_params, lr=unembedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
-            dict(kind='adamw', params=embedding_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
-            dict(kind='adamw', params=value_embeds_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
-            dict(kind='adamw', params=resid_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
-            dict(kind='adamw', params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),
+            {'kind': 'adamw', 'params': lm_head_params, 'lr': unembedding_lr * dmodel_lr_scale, 'betas': adam_betas, 'eps': 1e-10, 'weight_decay': 0.0},
+            {'kind': 'adamw', 'params': embedding_params, 'lr': embedding_lr * dmodel_lr_scale, 'betas': adam_betas, 'eps': 1e-10, 'weight_decay': 0.0},
+            {'kind': 'adamw', 'params': value_embeds_params, 'lr': embedding_lr * dmodel_lr_scale, 'betas': adam_betas, 'eps': 1e-10, 'weight_decay': 0.0},
+            {'kind': 'adamw', 'params': resid_params, 'lr': scalar_lr * 0.01, 'betas': adam_betas, 'eps': 1e-10, 'weight_decay': 0.0},
+            {'kind': 'adamw', 'params': x0_params, 'lr': scalar_lr, 'betas': (0.96, 0.95), 'eps': 1e-10, 'weight_decay': 0.0},
         ]
         for shape in sorted({p.shape for p in matrix_params}):
             group_params = [p for p in matrix_params if p.shape == shape]
-            param_groups.append(dict(
-                kind='muon', params=group_params, lr=matrix_lr,
-                momentum=0.95, ns_steps=5, beta2=0.95, weight_decay=weight_decay,
-            ))
+            param_groups.append({'kind': 'muon', 'params': group_params, 'lr': matrix_lr, 'momentum': 0.95, 'ns_steps': 5, 'beta2': 0.95, 'weight_decay': weight_decay})
         optimizer = MuonAdamW(param_groups)
         for group in optimizer.param_groups:
             group["initial_lr"] = group["lr"]
         return optimizer
 
     def forward(self, idx, targets=None, reduction='mean'):
-        B, T = idx.size()
+        _B, T = idx.size()
         assert T <= self.cos.size(1)
         cos_sin = self.cos[:, :T], self.sin[:, :T]
 
@@ -568,7 +567,7 @@ while True:
     # Fast fail: abort if loss is exploding
     if train_loss_f > 100:
         print("FAIL")
-        exit(1)
+        sys.exit(1)
 
     torch.cuda.synchronize()
     t1 = time.time()
